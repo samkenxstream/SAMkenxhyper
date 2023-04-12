@@ -202,7 +202,7 @@ function syncPackageJSON() {
   const dependencies = toDependencies(plugins);
   const pkg = {
     name: 'hyper-plugins',
-    description: 'Auto-generated from `~/.hyper.js`!',
+    description: 'Auto-generated from `hyper.json`!',
     private: true,
     version: '0.0.1',
     repository: 'vercel/hyper',
@@ -306,9 +306,12 @@ function requirePlugins(): any[] {
     }
   };
 
-  return plugins_
+  return [
+    ...localPlugins.filter((p) => basename(p) === 'migrated-hyper3-config'),
+    ...plugins_,
+    ...localPlugins.filter((p) => basename(p) !== 'migrated-hyper3-config')
+  ]
     .map(load)
-    .concat(localPlugins.map(load))
     .filter((v) => Boolean(v));
 }
 

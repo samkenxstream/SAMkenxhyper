@@ -1,4 +1,4 @@
-import {app, BrowserWindow, shell, Menu, BrowserWindowConstructorOptions, Event} from 'electron';
+import {app, BrowserWindow, shell, Menu, BrowserWindowConstructorOptions} from 'electron';
 import {isAbsolute, normalize, sep} from 'path';
 import {URL, fileURLToPath} from 'url';
 import {v4 as uuidv4} from 'uuid';
@@ -17,6 +17,7 @@ import {decorateSessionOptions, decorateSessionClass} from '../plugins';
 import {enable as remoteEnable} from '@electron/remote/main';
 import {configOptions} from '../../lib/config';
 import {getWorkingDirectoryFromPID} from 'native-process-working-directory';
+import {existsSync} from 'fs';
 
 export function newWindow(
   options_: BrowserWindowConstructorOptions,
@@ -138,7 +139,7 @@ export function newWindow(
       } catch (error) {
         console.error(error);
       }
-      cwd = cwd && isAbsolute(cwd) ? cwd : '';
+      cwd = cwd && isAbsolute(cwd) && existsSync(cwd) ? cwd : '';
     }
 
     // remove the rows and cols, the wrong value of them will break layout when init create
@@ -275,22 +276,33 @@ export function newWindow(
     }
   });
 
-  const handleDrop = (event: Event, url: string) => {
+  const handleDroppedURL = (url: string) => {
     const protocol = typeof url === 'string' && new URL(url).protocol;
     if (protocol === 'file:') {
-      event.preventDefault();
       const path = fileURLToPath(url);
-      rpc.emit('session data send', {data: path, escaped: true});
+      return {data: path, escaped: true};
     } else if (protocol === 'http:' || protocol === 'https:') {
-      event.preventDefault();
-      rpc.emit('session data send', {data: url});
+      return {data: url};
     }
   };
 
   // If file is dropped onto the terminal window, navigate and new-window events are prevented
-  // and his path is added to active session.
-  window.webContents.on('will-navigate', handleDrop);
-  window.webContents.on('new-window', handleDrop);
+  // and it's path is added to active session.
+  window.webContents.on('will-navigate', (event, url) => {
+    const data = handleDroppedURL(url);
+    if (data) {
+      event.preventDefault();
+      rpc.emit('session data send', data);
+    }
+  });
+  window.webContents.setWindowOpenHandler(({url}) => {
+    const data = handleDroppedURL(url);
+    if (data) {
+      rpc.emit('session data send', data);
+      return {action: 'deny'};
+    }
+    return {action: 'allow'};
+  });
 
   // expose internals to extension authors
   window.rpc = rpc;
